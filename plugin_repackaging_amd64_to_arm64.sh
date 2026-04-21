@@ -325,7 +325,8 @@ repackage(){
   # 使用新的智能下载函数处理依赖
   if [[ -f requirements.txt ]]; then
     process_requirements "requirements.txt" "./wheels"
-    
+    inject_uv_offline_config
+    rm -f uv.lock
     # 修改requirements.txt，添加本地wheels路径
     sed -i '1i\--no-index --find-links=./wheels/' requirements.txt
   else
@@ -364,6 +365,32 @@ install_unzip(){
       exit 1
     fi
   fi
+}
+inject_uv_offline_config(){
+    if [ ! -f "pyproject.toml" ]; then
+        return 0
+    fi
+
+    python - <<'PY'
+from pathlib import Path
+import re
+
+path = Path("pyproject.toml")
+content = path.read_text(encoding="utf-8")
+
+uv_block = """
+[tool.uv]
+no-index = true
+find-links = ["./wheels/"]
+environments = ["sys_platform == 'linux'"]
+"""
+
+# Remove any existing [tool.uv] section to avoid duplicates
+content = re.sub(r'\n?\[tool\.uv\][^\[]*', '', content, flags=re.DOTALL)
+content = content.rstrip("\n") + "\n" + uv_block.lstrip("\n")
+path.write_text(content, encoding="utf-8")
+PY
+    echo "Injected [tool.uv] offline config into pyproject.toml"
 }
 
 case "$1" in

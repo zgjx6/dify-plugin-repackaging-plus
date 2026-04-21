@@ -99,6 +99,8 @@ repackage(){
 	echo "Repackaging ..."
 	cd ${CURR_DIR}/${PACKAGE_NAME}
 	pip download -r requirements.txt -d ./wheels --index-url ${PIP_MIRROR_URL}
+  inject_uv_offline_config
+  rm -f uv.lock
 	sed -i '1i\--no-index --find-links=./wheels/' requirements.txt
 	if [ -f .difyignore ]; then
 	  sed -i '/^wheels\//d' .difyignore
@@ -119,6 +121,32 @@ install_unzip(){
 			exit 1
 		fi
 	fi
+}
+inject_uv_offline_config(){
+    if [ ! -f "pyproject.toml" ]; then
+        return 0
+    fi
+
+    python - <<'PY'
+from pathlib import Path
+import re
+
+path = Path("pyproject.toml")
+content = path.read_text(encoding="utf-8")
+
+uv_block = """
+[tool.uv]
+no-index = true
+find-links = ["./wheels/"]
+environments = ["sys_platform == 'linux'"]
+"""
+
+# Remove any existing [tool.uv] section to avoid duplicates
+content = re.sub(r'\n?\[tool\.uv\][^\[]*', '', content, flags=re.DOTALL)
+content = content.rstrip("\n") + "\n" + uv_block.lstrip("\n")
+path.write_text(content, encoding="utf-8")
+PY
+    echo "Injected [tool.uv] offline config into pyproject.toml"
 }
 case "$1" in
 	'market')
